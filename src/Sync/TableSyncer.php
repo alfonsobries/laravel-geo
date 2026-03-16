@@ -102,9 +102,11 @@ class TableSyncer
             $rows[] = $row;
         }
 
-        $updateColumns = array_diff(array_keys($rows[0]), ['id', $uniqueKey, 'created_at']);
+        $updateColumns = array_values(array_diff(array_keys($rows[0]), ['id', $uniqueKey, 'created_at']));
 
-        DB::table($table)->upsert($rows, [$uniqueKey], array_values($updateColumns));
+        foreach (array_chunk($rows, 500) as $chunk) {
+            DB::table($table)->upsert($chunk, [$uniqueKey], $updateColumns);
+        }
     }
 
     /**
@@ -148,7 +150,10 @@ class TableSyncer
 
         $updateColumns = ['name', 'locale', 'is_preferred', 'is_short', 'is_colloquial', 'is_historic', 'updated_at'];
 
-        DB::table($translationTable)->upsert($rows, ['alternate_name_id'], $updateColumns);
+        // Batch upserts to avoid MySQL placeholder limit (65535)
+        foreach (array_chunk($rows, 500) as $chunk) {
+            DB::table($translationTable)->upsert($chunk, ['alternate_name_id'], $updateColumns);
+        }
     }
 
     /**
