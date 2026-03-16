@@ -55,4 +55,17 @@ class GeoApiClient
     {
         return $this->http->get('/cities', $cursor ? ['cursor' => $cursor] : [])->throw()->json();
     }
+
+    public function getMaxmindChecksum(): ?string
+    {
+        return $this->http->get('/maxmind/checksum')->throw()->json('checksum');
+    }
+
+    public function downloadMaxmind(string $destination): void
+    {
+        $response = $this->http->withOptions([
+            'sink' => $destination,
+            'timeout' => 300,
+        ])->get('/maxmind/download')->throw();
+    }
 }

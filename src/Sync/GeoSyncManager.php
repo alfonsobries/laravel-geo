@@ -52,6 +52,44 @@ class GeoSyncManager
     /**
      * @param array<string>|null $tables
      */
+    public function syncMaxmind(bool $force = false, ?\Closure $onProgress = null): bool
+    {
+        $dbPath = config('geo.maxmind.database_path');
+
+        if (! $force && $dbPath && file_exists($dbPath)) {
+            $localChecksum = md5_file($dbPath);
+            $remoteChecksum = $this->client->getMaxmindChecksum();
+
+            if ($localChecksum === $remoteChecksum) {
+                if ($onProgress) {
+                    $onProgress('maxmind', 'skipped');
+                }
+
+                return false;
+            }
+        }
+
+        if ($onProgress) {
+            $onProgress('maxmind', 'syncing');
+        }
+
+        $targetDir = dirname($dbPath);
+        if (! is_dir($targetDir)) {
+            mkdir($targetDir, 0755, true);
+        }
+
+        $this->client->downloadMaxmind($dbPath);
+
+        if ($onProgress) {
+            $onProgress('maxmind', 'completed');
+        }
+
+        return true;
+    }
+
+    /**
+     * @param array<string>|null $tables
+     */
     public function sync(?array $tables = null, bool $force = false, ?\Closure $onProgress = null): void
     {
         $manifest = $this->client->getManifest();

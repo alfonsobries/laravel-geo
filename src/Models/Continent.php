@@ -14,6 +14,11 @@ class Continent extends Model
 
     protected $guarded = [];
 
+    public static function findByCode(string $code): ?static
+    {
+        return static::where('code', $code)->first();
+    }
+
     /**
      * @return HasMany<Country, $this>
      */

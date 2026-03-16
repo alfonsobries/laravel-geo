@@ -11,6 +11,8 @@ class GeoServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->mergeConfigFrom(__DIR__.'/../config/geo.php', 'geo');
+
+        $this->app->singleton('geo', fn () => new GeoLocator);
     }
 
     public function boot(): void

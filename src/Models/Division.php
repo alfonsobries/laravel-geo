@@ -15,6 +15,11 @@ class Division extends Model
 
     protected $guarded = [];
 
+    public static function findByName(string $name): ?static
+    {
+        return static::where('name', $name)->first();
+    }
+
     /**
      * @return BelongsTo<Country, $this>
      */

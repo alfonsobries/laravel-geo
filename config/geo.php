@@ -15,4 +15,13 @@ return [
     'locales' => null, // ['en', 'es'] or null for all
 
     'connection' => null, // database connection override
+
+    'maxmind' => [
+        'database_path' => storage_path('app/geoip/GeoLite2-City.mmdb'),
+    ],
+
+    'cache' => [
+        'enabled' => true,
+        'ttl' => 3600,
+    ],
 ];

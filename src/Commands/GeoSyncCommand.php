@@ -9,9 +9,10 @@ class GeoSyncCommand extends Command
 {
     protected $signature = 'geo:sync
         {--force : Force full re-sync even if checksums match}
-        {--tables= : Comma-separated list of tables to sync}';
+        {--tables= : Comma-separated list of tables to sync}
+        {--no-maxmind : Skip MaxMind database sync}';
 
-    protected $description = 'Sync geo data from geo.vexilo.com';
+    protected $description = 'Sync geo data and MaxMind database from geo.vexilo.com';
 
     public function handle(GeoSyncManager $manager): int
     {
@@ -21,18 +22,27 @@ class GeoSyncCommand extends Command
 
         $force = (bool) $this->option('force');
 
+        $progress = function (string $table, string $status, int $count = 0): void {
+            match ($status) {
+                'skipped' => $this->line("  <comment>{$table}</comment>: up to date, skipped"),
+                'syncing' => $this->line("  <info>{$table}</info>: syncing..."),
+                'page' => $this->line("    synced {$count} records"),
+                'completed' => $this->line("  <info>{$table}</info>: completed"),
+            };
+        };
+
         $this->info('Starting geo sync...');
 
         try {
-            $manager->sync($tables, $force, function (string $table, string $status, int $count = 0): void {
-                match ($status) {
-                    'skipped' => $this->line("  <comment>{$table}</comment>: up to date, skipped"),
-                    'syncing' => $this->line("  <info>{$table}</info>: syncing..."),
-                    'page' => $this->line("    synced {$count} records"),
-                    'completed' => $this->line("  <info>{$table}</info>: completed"),
-                };
-            });
+            $manager->sync($tables, $force, $progress);
 
+            if (! $this->option('no-maxmind')) {
+                $this->newLine();
+                $this->info('Syncing MaxMind database...');
+                $manager->syncMaxmind($force, $progress);
+            }
+
+            $this->newLine();
             $this->info('Geo sync completed successfully.');
 
             return self::SUCCESS;

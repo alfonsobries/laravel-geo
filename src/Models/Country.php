@@ -15,6 +15,16 @@ class Country extends Model
 
     protected $guarded = [];
 
+    public static function findByCode(string $code): ?static
+    {
+        return static::where('code', $code)->first();
+    }
+
+    public static function findByIso(string $iso): ?static
+    {
+        return static::where('iso', $iso)->first();
+    }
+
     /**
      * @return BelongsTo<Continent, $this>
      */
