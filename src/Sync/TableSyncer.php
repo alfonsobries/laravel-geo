@@ -96,8 +96,8 @@ class TableSyncer
             }
 
             $now = now()->toDateTimeString();
-            $row['created_at'] = $row['created_at'] ?? $now;
-            $row['updated_at'] = $row['updated_at'] ?? $now;
+            $row['created_at'] = isset($row['created_at']) ? $this->parseDate($row['created_at']) : $now;
+            $row['updated_at'] = isset($row['updated_at']) ? $this->parseDate($row['updated_at']) : $now;
 
             $rows[] = $row;
         }
@@ -166,5 +166,10 @@ class TableSyncer
             ->whereNotNull('geoname_id')
             ->whereNotIn('geoname_id', $seenGeonameIds)
             ->delete();
+    }
+
+    private function parseDate(string $date): string
+    {
+        return \Illuminate\Support\Carbon::parse($date)->toDateTimeString();
     }
 }
