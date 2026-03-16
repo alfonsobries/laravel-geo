@@ -9,6 +9,7 @@ class GeoSyncCommand extends Command
 {
     protected $signature = 'geo:sync
         {--force : Force full re-sync even if checksums match}
+        {--mode=auto : Sync mode: auto, dump, or incremental}
         {--tables= : Comma-separated list of tables to sync}
         {--no-maxmind : Skip MaxMind database sync}';
 
@@ -21,6 +22,7 @@ class GeoSyncCommand extends Command
             : null;
 
         $force = (bool) $this->option('force');
+        $mode = $this->option('mode');
 
         $progress = function (string $table, string $status, int $count = 0): void {
             match ($status) {
@@ -31,10 +33,10 @@ class GeoSyncCommand extends Command
             };
         };
 
-        $this->info('Starting geo sync...');
+        $this->info("Starting geo sync (mode: {$mode})...");
 
         try {
-            $manager->sync($tables, $force, $progress);
+            $manager->sync($tables, $force, $mode, $progress);
 
             if (! $this->option('no-maxmind')) {
                 $this->newLine();

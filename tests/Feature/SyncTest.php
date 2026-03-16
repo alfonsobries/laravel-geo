@@ -1,26 +1,34 @@
 <?php
 
+use AlfonsoBries\Geo\Sync\DumpSyncer;
 use AlfonsoBries\Geo\Sync\GeoApiClient;
 use AlfonsoBries\Geo\Sync\GeoSyncManager;
 use AlfonsoBries\Geo\Sync\TableSyncer;
 use Illuminate\Support\Facades\Http;
 
+function createManager(): GeoSyncManager
+{
+    $client = new GeoApiClient;
+
+    return new GeoSyncManager($client, new TableSyncer, new DumpSyncer($client));
+}
+
 beforeEach(function () {
     Http::fake([
         '*/api/v1/manifest' => Http::response([
             'data' => [
-                'continents' => ['checksum' => 'abc123', 'record_count' => 1, 'last_synced_at' => now()->toIso8601String()],
-                'continent_translations' => ['checksum' => 'def456', 'record_count' => 1, 'last_synced_at' => now()->toIso8601String()],
-                'countries' => ['checksum' => 'ghi789', 'record_count' => 1, 'last_synced_at' => now()->toIso8601String()],
-                'country_translations' => ['checksum' => 'jkl012', 'record_count' => 0, 'last_synced_at' => now()->toIso8601String()],
-                'divisions' => ['checksum' => 'mno345', 'record_count' => 1, 'last_synced_at' => now()->toIso8601String()],
-                'division_translations' => ['checksum' => 'pqr678', 'record_count' => 0, 'last_synced_at' => now()->toIso8601String()],
-                'cities' => ['checksum' => 'stu901', 'record_count' => 1, 'last_synced_at' => now()->toIso8601String()],
-                'city_translations' => ['checksum' => 'vwx234', 'record_count' => 0, 'last_synced_at' => now()->toIso8601String()],
+                'continents' => ['checksum' => 'abc123', 'record_count' => 1, 'last_synced_at' => now()->toIso8601String(), 'dump_checksum' => null],
+                'continent_translations' => ['checksum' => 'def456', 'record_count' => 1, 'last_synced_at' => now()->toIso8601String(), 'dump_checksum' => null],
+                'countries' => ['checksum' => 'ghi789', 'record_count' => 1, 'last_synced_at' => now()->toIso8601String(), 'dump_checksum' => null],
+                'country_translations' => ['checksum' => 'jkl012', 'record_count' => 0, 'last_synced_at' => now()->toIso8601String(), 'dump_checksum' => null],
+                'divisions' => ['checksum' => 'mno345', 'record_count' => 1, 'last_synced_at' => now()->toIso8601String(), 'dump_checksum' => null],
+                'division_translations' => ['checksum' => 'pqr678', 'record_count' => 0, 'last_synced_at' => now()->toIso8601String(), 'dump_checksum' => null],
+                'cities' => ['checksum' => 'stu901', 'record_count' => 1, 'last_synced_at' => now()->toIso8601String(), 'dump_checksum' => null],
+                'city_translations' => ['checksum' => 'vwx234', 'record_count' => 0, 'last_synced_at' => now()->toIso8601String(), 'dump_checksum' => null],
             ],
         ]),
 
-        '*/api/v1/continents' => Http::response([
+        '*/api/v1/continents*' => Http::response([
             'data' => [[
                 'geoname_id' => 6255148,
                 'code' => 'EU',
@@ -45,7 +53,7 @@ beforeEach(function () {
             ]],
         ]),
 
-        '*/api/v1/countries' => Http::response([
+        '*/api/v1/countries*' => Http::response([
             'data' => [[
                 'geoname_id' => 2921044,
                 'code' => 'DE',
@@ -119,15 +127,17 @@ beforeEach(function () {
             'next_cursor' => null,
             'has_more' => false,
         ]),
+
+        '*/api/v1/deletions*' => Http::response(['data' => []]),
     ]);
 
     config(['geo.api_url' => 'https://geo.vexilo.com', 'geo.api_key' => 'test-key']);
 });
 
 test('full sync creates all geo records', function () {
-    $manager = new GeoSyncManager(new GeoApiClient, new TableSyncer);
+    $manager = createManager();
 
-    $manager->sync(force: true);
+    $manager->sync(force: true, mode: 'incremental');
 
     $this->assertDatabaseHas('continents', ['geoname_id' => 6255148, 'name' => 'Europe']);
     $this->assertDatabaseHas('continent_translations', ['alternate_name_id' => 123456, 'name' => 'Europa']);
@@ -137,9 +147,9 @@ test('full sync creates all geo records', function () {
 });
 
 test('sync resolves foreign keys via geoname_id', function () {
-    $manager = new GeoSyncManager(new GeoApiClient, new TableSyncer);
+    $manager = createManager();
 
-    $manager->sync(force: true);
+    $manager->sync(force: true, mode: 'incremental');
 
     $continent = \Illuminate\Support\Facades\DB::table('continents')->where('geoname_id', 6255148)->first();
     $country = \Illuminate\Support\Facades\DB::table('countries')->where('geoname_id', 2921044)->first();
@@ -153,14 +163,12 @@ test('sync resolves foreign keys via geoname_id', function () {
 });
 
 test('sync skips tables when checksums match', function () {
-    $manager = new GeoSyncManager(new GeoApiClient, new TableSyncer);
+    $manager = createManager();
 
-    // First sync
-    $manager->sync(force: true);
+    $manager->sync(force: true, mode: 'incremental');
 
-    // Second sync should skip
     $skipped = [];
-    $manager->sync(force: false, onProgress: function (string $table, string $status) use (&$skipped): void {
+    $manager->sync(force: false, mode: 'incremental', onProgress: function (string $table, string $status) use (&$skipped): void {
         if ($status === 'skipped') {
             $skipped[] = $table;
         }
@@ -170,14 +178,12 @@ test('sync skips tables when checksums match', function () {
 });
 
 test('force sync always re-syncs', function () {
-    $manager = new GeoSyncManager(new GeoApiClient, new TableSyncer);
+    $manager = createManager();
 
-    // First sync
-    $manager->sync(force: true);
+    $manager->sync(force: true, mode: 'incremental');
 
-    // Force second sync
     $synced = [];
-    $manager->sync(force: true, onProgress: function (string $table, string $status) use (&$synced): void {
+    $manager->sync(force: true, mode: 'incremental', onProgress: function (string $table, string $status) use (&$synced): void {
         if ($status === 'syncing') {
             $synced[] = $table;
         }
@@ -187,10 +193,10 @@ test('force sync always re-syncs', function () {
 });
 
 test('sync specific tables only', function () {
-    $manager = new GeoSyncManager(new GeoApiClient, new TableSyncer);
+    $manager = createManager();
 
     $synced = [];
-    $manager->sync(tables: ['continents'], force: true, onProgress: function (string $table, string $status) use (&$synced): void {
+    $manager->sync(tables: ['continents'], force: true, mode: 'incremental', onProgress: function (string $table, string $status) use (&$synced): void {
         if ($status === 'syncing') {
             $synced[] = $table;
         }
@@ -202,11 +208,28 @@ test('sync specific tables only', function () {
 });
 
 test('get status returns sync information', function () {
-    $manager = new GeoSyncManager(new GeoApiClient, new TableSyncer);
+    $manager = createManager();
 
     $status = $manager->getStatus();
 
     expect($status)->toHaveKeys(['continents', 'countries', 'divisions', 'cities']);
     expect($status['continents']['in_sync'])->toBeFalse();
     expect($status['continents']['remote_count'])->toBe(1);
+});
+
+test('auto mode resolves to incremental when local data exists', function () {
+    $manager = createManager();
+
+    // First sync populates data
+    $manager->sync(force: true, mode: 'incremental');
+
+    // Auto mode should use incremental since data exists
+    $skipped = [];
+    $manager->sync(mode: 'auto', onProgress: function (string $table, string $status) use (&$skipped): void {
+        if ($status === 'skipped') {
+            $skipped[] = $table;
+        }
+    });
+
+    expect($skipped)->toContain('continents', 'countries', 'divisions', 'cities');
 });

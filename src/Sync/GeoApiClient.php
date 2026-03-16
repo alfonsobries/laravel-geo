@@ -13,47 +13,88 @@ class GeoApiClient
     {
         $this->http = Http::baseUrl(rtrim(config('geo.api_url'), '/').'/api/v1')
             ->withHeaders(['X-Api-Key' => config('geo.api_key')])
+            ->retry(3, 500)
             ->timeout(60);
     }
 
     /**
-     * @return array<string, array{checksum: string, record_count: int, last_synced_at: string}>
+     * @return array<string, array{checksum: string, record_count: int, last_synced_at: string|null, dump_checksum: string|null}>
      */
     public function getManifest(): array
     {
         return $this->http->get('/manifest')->throw()->json('data');
     }
 
-    /**
-     * @return array<int, array<string, mixed>>
-     */
-    public function getContinents(): array
+    public function hasDumps(): bool
     {
-        return $this->http->get('/continents')->throw()->json('data');
+        $manifest = $this->getManifest();
+
+        return ($manifest['continents']['dump_checksum'] ?? null) !== null;
+    }
+
+    public function downloadDump(string $table, string $destination): void
+    {
+        $this->http->withOptions([
+            'sink' => $destination,
+            'timeout' => 600,
+        ])->get("/dumps/{$table}")->throw();
     }
 
     /**
      * @return array<int, array<string, mixed>>
      */
-    public function getCountries(): array
+    public function getContinents(?string $updatedAfter = null): array
     {
-        return $this->http->get('/countries')->throw()->json('data');
+        $params = $updatedAfter ? ['updated_after' => $updatedAfter] : [];
+
+        return $this->http->get('/continents', $params)->throw()->json('data');
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function getCountries(?string $updatedAfter = null): array
+    {
+        $params = $updatedAfter ? ['updated_after' => $updatedAfter] : [];
+
+        return $this->http->get('/countries', $params)->throw()->json('data');
     }
 
     /**
      * @return array{data: array<int, array<string, mixed>>, next_cursor: string|null, has_more: bool}
      */
-    public function getDivisions(?string $cursor = null): array
+    public function getDivisions(?string $cursor = null, ?string $updatedAfter = null): array
     {
-        return $this->http->get('/divisions', $cursor ? ['cursor' => $cursor] : [])->throw()->json();
+        $params = array_filter([
+            'cursor' => $cursor,
+            'updated_after' => $updatedAfter,
+        ]);
+
+        return $this->http->get('/divisions', $params)->throw()->json();
     }
 
     /**
      * @return array{data: array<int, array<string, mixed>>, next_cursor: string|null, has_more: bool}
      */
-    public function getCities(?string $cursor = null): array
+    public function getCities(?string $cursor = null, ?string $updatedAfter = null): array
     {
-        return $this->http->get('/cities', $cursor ? ['cursor' => $cursor] : [])->throw()->json();
+        $params = array_filter([
+            'cursor' => $cursor,
+            'updated_after' => $updatedAfter,
+        ]);
+
+        return $this->http->get('/cities', $params)->throw()->json();
+    }
+
+    /**
+     * @return array<int, array{geoname_id: int, deleted_at: string}>
+     */
+    public function getDeletions(string $table, string $since): array
+    {
+        return $this->http->get('/deletions', [
+            'table' => $table,
+            'since' => $since,
+        ])->throw()->json('data');
     }
 
     public function getMaxmindChecksum(): ?string
@@ -63,7 +104,7 @@ class GeoApiClient
 
     public function downloadMaxmind(string $destination): void
     {
-        $response = $this->http->withOptions([
+        $this->http->withOptions([
             'sink' => $destination,
             'timeout' => 300,
         ])->get('/maxmind/download')->throw();
