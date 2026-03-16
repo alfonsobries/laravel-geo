@@ -61,6 +61,12 @@ php artisan geo:sync
 # Force full re-sync
 php artisan geo:sync --force
 
+# Use dump mode (fast initial sync via CSV files)
+php artisan geo:sync --mode=dump
+
+# Use incremental mode (daily updates via watermark)
+php artisan geo:sync --mode=incremental
+
 # Sync specific tables only
 php artisan geo:sync --tables=countries,divisions
 
@@ -71,11 +77,17 @@ php artisan geo:sync --no-maxmind
 php artisan geo:status
 ```
 
+### Sync Modes
+
+- **Auto** (default) — Detects the best mode. Uses dump for initial sync (no local data), incremental for daily updates.
+- **Dump** — Downloads CSV dump files from the server. Fast bulk import with truncate + reimport. Best for initial setup or full re-sync.
+- **Incremental** — Uses `updated_after` watermarks to only fetch changed records. Fetches deletions from the server. Best for daily scheduled updates.
+
 The sync is:
 - **Manifest-driven** — compares checksums, skips tables that haven't changed
-- **Resumable** — stores the last cursor, so interrupted syncs pick up where they left off
 - **Idempotent** — uses upserts keyed on `geoname_id` / `alternate_name_id`
 - **Dependency-aware** — syncs in order: continents -> countries -> divisions -> cities
+- **Retry-capable** — HTTP requests retry 3x with backoff on failure
 
 Add to your scheduler for automatic updates:
 
