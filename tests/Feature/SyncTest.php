@@ -233,3 +233,35 @@ test('auto mode resolves to incremental when local data exists', function () {
 
     expect($skipped)->toContain('continents', 'countries', 'divisions', 'cities');
 });
+
+test('country sync updates existing rows by code', function () {
+    $existingId = \Illuminate\Support\Facades\DB::table('countries')->insertGetId([
+        'code' => 'DE',
+        'iso' => 'DEU',
+        'iso_numeric' => '276',
+        'name' => 'Old Germany',
+        'latitude' => 0,
+        'longitude' => 0,
+        'continent_id' => \Illuminate\Support\Facades\DB::table('continents')->insertGetId([
+            'code' => 'EU',
+            'name' => 'Europe',
+            'latitude' => 0,
+            'longitude' => 0,
+            'geoname_id' => 6255148,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]),
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    createManager()->sync(tables: ['countries'], force: true, mode: 'incremental');
+
+    expect(\Illuminate\Support\Facades\DB::table('countries')->count())->toBe(1);
+
+    $country = \Illuminate\Support\Facades\DB::table('countries')->where('code', 'DE')->first();
+
+    expect($country->id)->toBe($existingId)
+        ->and($country->name)->toBe('Germany')
+        ->and($country->geoname_id)->toBe(2921044);
+});

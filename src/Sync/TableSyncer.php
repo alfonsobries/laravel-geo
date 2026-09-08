@@ -37,6 +37,12 @@ class TableSyncer
     {
         $map = [];
 
+        if (! Schema::hasTable($table)) {
+            $this->geonameIdMaps[$table] = $map;
+
+            return $map;
+        }
+
         DB::table($table)
             ->select(['id', 'geoname_id'])
             ->whereNotNull('geoname_id')
@@ -75,11 +81,13 @@ class TableSyncer
                 $localField = str_replace('_geoname_id', '_id', $apiField);
                 $geonameId = $record[$apiField] ?? null;
 
-                if ($geonameId !== null) {
-                    $map = $this->getGeonameIdMap($sourceTable);
-                    $row[$localField] = $map[$geonameId] ?? null;
-                } else {
-                    $row[$localField] = null;
+                if (in_array($localField, $columns, true)) {
+                    if ($geonameId !== null) {
+                        $map = $this->getGeonameIdMap($sourceTable);
+                        $row[$localField] = $map[$geonameId] ?? null;
+                    } else {
+                        $row[$localField] = null;
+                    }
                 }
 
                 unset($record[$apiField]);
@@ -95,11 +103,19 @@ class TableSyncer
                 }
             }
 
+            if (($row[$uniqueKey] ?? null) === null) {
+                continue;
+            }
+
             $now = now()->toDateTimeString();
             $row['created_at'] = isset($row['created_at']) ? $this->parseDate($row['created_at']) : $now;
             $row['updated_at'] = isset($row['updated_at']) ? $this->parseDate($row['updated_at']) : $now;
 
             $rows[] = $row;
+        }
+
+        if ($rows === []) {
+            return;
         }
 
         $updateColumns = array_values(array_diff(array_keys($rows[0]), ['id', $uniqueKey, 'created_at']));
@@ -117,6 +133,10 @@ class TableSyncer
      */
     public function upsertTranslations(string $translationTable, string $parentTable, array $records, string $parentForeignKey): void
     {
+        if (! Schema::hasTable($translationTable)) {
+            return;
+        }
+
         $rows = [];
         $parentMap = $this->getGeonameIdMap($parentTable);
 

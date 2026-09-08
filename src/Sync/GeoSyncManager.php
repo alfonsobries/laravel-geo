@@ -3,11 +3,12 @@
 namespace AlfonsoBries\Geo\Sync;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class GeoSyncManager
 {
     /**
-     * @var array<string, array{table: string, translation_table: string, parent_fk: string, foreign_keys: array<string, string>, paginated: bool, fetch_method: string}>
+     * @var array<string, array{table: string, translation_table: string, parent_fk: string, foreign_keys: array<string, string>, paginated: bool, fetch_method: string, unique_key: string}>
      */
     private const array TABLE_CONFIG = [
         'continents' => [
@@ -17,6 +18,7 @@ class GeoSyncManager
             'foreign_keys' => [],
             'paginated' => false,
             'fetch_method' => 'getContinents',
+            'unique_key' => 'geoname_id',
         ],
         'countries' => [
             'table' => 'countries',
@@ -25,6 +27,7 @@ class GeoSyncManager
             'foreign_keys' => ['continent_geoname_id' => 'continents'],
             'paginated' => false,
             'fetch_method' => 'getCountries',
+            'unique_key' => 'code',
         ],
         'divisions' => [
             'table' => 'divisions',
@@ -33,6 +36,7 @@ class GeoSyncManager
             'foreign_keys' => ['country_geoname_id' => 'countries'],
             'paginated' => true,
             'fetch_method' => 'getDivisions',
+            'unique_key' => 'geoname_id',
         ],
         'cities' => [
             'table' => 'cities',
@@ -41,6 +45,7 @@ class GeoSyncManager
             'foreign_keys' => ['country_geoname_id' => 'countries', 'division_geoname_id' => 'divisions'],
             'paginated' => true,
             'fetch_method' => 'getCities',
+            'unique_key' => 'geoname_id',
         ],
     ];
 
@@ -115,7 +120,7 @@ class GeoSyncManager
             $status[$tableName] = [
                 'local_checksum' => $state?->checksum,
                 'remote_checksum' => $remoteChecksum,
-                'local_count' => DB::table($config['table'])->count(),
+                'local_count' => Schema::hasTable($config['table']) ? DB::table($config['table'])->count() : 0,
                 'remote_count' => $manifest[$tableName]['record_count'] ?? 0,
                 'in_sync' => $state?->checksum === $remoteChecksum,
                 'last_synced_at' => $state?->last_synced_at?->toIso8601String(),
@@ -135,7 +140,7 @@ class GeoSyncManager
         }
 
         $hasDumps = ($manifest['continents']['dump_checksum'] ?? null) !== null;
-        $hasLocalData = DB::table('continents')->exists();
+        $hasLocalData = Schema::hasTable('continents') && DB::table('continents')->exists();
 
         if ($hasDumps && ! $hasLocalData) {
             return 'dump';
@@ -185,6 +190,11 @@ class GeoSyncManager
     {
         foreach ($enabledTables as $tableName) {
             $config = self::TABLE_CONFIG[$tableName];
+
+            if (! Schema::hasTable($config['table'])) {
+                continue;
+            }
+
             $state = SyncManifest::query()->where('table_name', $tableName)->first();
 
             if (! $force && $state && $state->completed) {
@@ -242,7 +252,7 @@ class GeoSyncManager
             $this->tableSyncer->upsertRecords(
                 $config['table'],
                 $records,
-                'geoname_id',
+                $config['unique_key'],
                 $config['foreign_keys'],
             );
 
@@ -275,7 +285,7 @@ class GeoSyncManager
                 $this->tableSyncer->upsertRecords(
                     $config['table'],
                     $records,
-                    'geoname_id',
+                    $config['unique_key'],
                     $config['foreign_keys'],
                 );
 
